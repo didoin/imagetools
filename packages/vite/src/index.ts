@@ -1,4 +1,4 @@
-import { basename, extname } from 'node:path'
+import { basename, extname, relative } from 'node:path'
 import { statSync, mkdirSync, createReadStream } from 'node:fs'
 import { writeFile, readFile, opendir, stat, rm } from 'node:fs/promises'
 import type { Plugin, ResolvedConfig } from 'vite'
@@ -19,7 +19,7 @@ import {
 } from 'imagetools-core'
 import { createFilter, dataToEsm } from '@rollup/pluginutils'
 import sharp, { type Metadata, type Sharp } from 'sharp'
-import { createBasePath, generateImageID, hash } from './utils.js'
+import { createBasePath } from './utils.js'
 import type { VitePluginOptions } from './types.js'
 
 export type {
@@ -132,11 +132,11 @@ export function imagetools(userOptions: Partial<VitePluginOptions> = {}): Plugin
         error: (msg) => this.error(msg)
       }
 
-      const imageBuffer = await img.clone().toBuffer()
-
-      const imageHash = hash([imageBuffer])
       for (const config of imageConfigs) {
-        const id = generateImageID(config, imageHash)
+        const relativePath = relative(viteConfig.root, srcURL.pathname)
+        const tokens = Object.keys(config).map(key => `${key}=${config[key]}`)
+        const id = (tokens.length > 0) ? `${relativePath}?${tokens.join('&')}` : ''
+
         let image: Sharp | undefined
         let metadata: ImageMetadata
 
@@ -170,6 +170,7 @@ export function imagetools(userOptions: Partial<VitePluginOptions> = {}): Plugin
         } else {
           const fileHandle = this.emitFile({
             name: basename(pathname, extname(pathname)) + `.${metadata.format}`,
+            originalFileName: id,
             source: image ? await image.toBuffer() : await readFile(`${cacheOptions.dir}/${id}`),
             type: 'asset'
           })
